@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "datasets": [
+    {
+      "authority": "FAA",
+      "season": "2026-2027",
+      "issue": "Original Issue",
+      "issueDate": "2026-08-11",
+      "schemaVersion": 1,
+      "url": "https://avimedia.github.io/holdover-data/faa-2026-27.json",
+      "sha256": "b13b26b147d2f679619fb29298171b5e7f11d6762277b41a5dd07c76bfca9d70"
+    }
+  ]
+}
