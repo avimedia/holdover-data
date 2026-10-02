@@ -1,0 +1,50 @@
+name: Check FAA holdover source
+
+on:
+  schedule:
+    # Mondays at 13:00 UTC.
+    - cron: '0 13 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the FAA source document against the published checksum
+        id: compare
+        run: |
+          set -e
+          SOURCE_URL=$(jq -r '.sourceURL' docs/faa-2026-27.json)
+          KNOWN_SHA=$(jq -r '.sourceSHA256' docs/faa-2026-27.json)
+          echo "source_url=$SOURCE_URL" >> "$GITHUB_OUTPUT"
+          echo "known_sha=$KNOWN_SHA" >> "$GITHUB_OUTPUT"
+          if ! curl -fsSL "$SOURCE_URL" -o /tmp/faa.docx; then
+            echo "download_failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "download_failed=false" >> "$GITHUB_OUTPUT"
+          NEW_SHA=$(sha256sum /tmp/faa.docx | awk '{print $1}')
+          echo "new_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Open an issue if the source changed or moved
+        if: steps.compare.outputs.download_failed == 'true' || steps.compare.outputs.new_sha != steps.compare.outputs.known_sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "FAA holdover source document changed"
+        run: |
+          set -e
+          if gh issue list --state open --search "in:title \"$TITLE\"" --json title --jq '.[].title' | grep -qxF "$TITLE"; then
+            echo "An open issue already tracks this. Skipping."
+            exit 0
+          fi
+          if [ "${{ steps.compare.outputs.download_failed }}" = "true" ]; then
+            BODY="Could not download the FAA holdover docx from the URL on file (${{ steps.compare.outputs.source_url }}). It may have moved, which usually means the FAA published a new season. Check https://www.faa.gov/other_visit/aviation_industry/airline_operators/airline_safety/deicing, update the converter input, and republish docs/*.json + manifest.json."
+          else
+            BODY="The FAA holdover docx at ${{ steps.compare.outputs.source_url }} changed (sha256 was ${{ steps.compare.outputs.known_sha }}, now ${{ steps.compare.outputs.new_sha }}). Re-run the converter in HoldoverData/converter, review known-discrepancies, and republish docs/faa-2026-27.json + manifest.json to this repo, then bump the bundled copy in the app."
+          fi
+          gh issue create --title "$TITLE" --body "$BODY"
